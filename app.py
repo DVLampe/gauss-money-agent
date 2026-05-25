@@ -23,10 +23,92 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("📊 Gauss Money — Churn & Revenue AI Agent")
-st.caption(
-    "Генерирует синтетические данные по подписочной модели, считает KPI, "
-    "проверяет качество данных и формирует бизнес-отчёт через GPT-4o."
+# ── Gauss Money brand styling ──────────────────────────────────────────────────
+st.markdown(
+    """
+    <style>
+    /* ── Brand colours ───────────────────────────────────────────────────── */
+    :root {
+        --gauss-navy:   #0A1628;
+        --gauss-blue:   #2563EB;
+        --gauss-blue2:  #1D4ED8;
+        --gauss-light:  #EFF6FF;
+        --gauss-text:   #0F172A;
+    }
+
+    /* ── Header banner ───────────────────────────────────────────────────── */
+    .gauss-header {
+        background: linear-gradient(120deg, #0A1628 0%, #1E3A6E 55%, #2563EB 100%);
+        border-radius: 12px;
+        padding: 28px 36px 24px;
+        margin-bottom: 8px;
+    }
+    .gauss-header h1 {
+        color: #FFFFFF !important;
+        font-size: 1.9rem !important;
+        font-weight: 700 !important;
+        margin: 0 0 6px !important;
+        letter-spacing: -0.3px;
+    }
+    .gauss-header p {
+        color: #BFD4F7 !important;
+        font-size: 0.95rem !important;
+        margin: 0 !important;
+    }
+
+    /* ── Primary button ──────────────────────────────────────────────────── */
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(90deg, #1D4ED8, #2563EB) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        font-size: 1rem !important;
+        padding: 0.6rem 1.4rem !important;
+        box-shadow: 0 2px 8px rgba(37,99,235,0.35) !important;
+        transition: opacity .15s ease !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        opacity: 0.88 !important;
+    }
+
+    /* ── Metric cards (KPI table container) ─────────────────────────────── */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #BFDBFE !important;
+        border-radius: 10px !important;
+        overflow: hidden;
+    }
+
+    /* ── Section headers ─────────────────────────────────────────────────── */
+    h2, h3 {
+        color: var(--gauss-navy) !important;
+    }
+
+    /* ── st.info icon box ────────────────────────────────────────────────── */
+    div[data-testid="stNotificationContentInfo"] {
+        background-color: #EFF6FF !important;
+        border-left: 4px solid #2563EB !important;
+    }
+
+    /* ── Divider colour ──────────────────────────────────────────────────── */
+    hr {
+        border-color: #BFDBFE !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+st.markdown(
+    """
+    <div class="gauss-header">
+        <h1>📊 Gauss Money — Churn &amp; Revenue AI Agent</h1>
+        <p>Генерирует синтетические данные по подписочной модели, считает KPI,
+        проверяет качество данных и формирует бизнес-отчёт через GPT-4o.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.divider()
