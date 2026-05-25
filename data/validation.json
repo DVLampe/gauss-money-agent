@@ -1,0 +1,65 @@
+{
+  "all_hard_passed": true,
+  "total_checks": 8,
+  "passed_checks": 8,
+  "hard_failures": 0,
+  "soft_warnings": 0,
+  "checks": [
+    {
+      "name": "No duplicate (user_id, month) pairs",
+      "passed": true,
+      "message": "0 duplicate pairs found",
+      "severity": "hard",
+      "details": []
+    },
+    {
+      "name": "Revenue consistency (all months)",
+      "passed": true,
+      "message": "0 months where metrics.monthly_revenue \u2260 sum(amount_paid)",
+      "severity": "hard",
+      "details": []
+    },
+    {
+      "name": "Active users monotonically non-increasing",
+      "passed": true,
+      "message": "month-1=1000, month-12=532",
+      "severity": "soft",
+      "details": []
+    },
+    {
+      "name": "Churn rate in [0, 1]",
+      "passed": true,
+      "message": "0 months with churn_rate outside [0, 1]",
+      "severity": "hard",
+      "details": []
+    },
+    {
+      "name": "Payment amount consistency",
+      "passed": true,
+      "message": "failed rows with amount>0: 0; paid rows with wrong amount: 0",
+      "severity": "hard",
+      "details": []
+    },
+    {
+      "name": "No activity after churn",
+      "passed": true,
+      "message": "0 records found after a user's churn event",
+      "severity": "soft",
+      "details": []
+    },
+    {
+      "name": "User-flow conservation (active[M] + churned[M] == active[M-1])",
+      "passed": true,
+      "message": "0 months with inconsistent user counts",
+      "severity": "hard",
+      "details": []
+    },
+    {
+      "name": "All users start in month 1",
+      "passed": true,
+      "message": "month-1 users: 1000, total unique users: 1000",
+      "severity": "hard",
+      "details": []
+    }
+  ]
+}

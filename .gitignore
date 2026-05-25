@@ -1,0 +1,24 @@
+# Секреты — никогда не коммитить
+.env
+
+# Выходные файлы (требуют API-ключ, создаются при запуске)
+output/
+
+# data/ включена в репо — CSV с синтетическими данными нужен по условию задания
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
