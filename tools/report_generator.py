@@ -14,9 +14,18 @@ import pandas as pd
 from openai import OpenAI
 
 
-def generate_report(metrics_path: str, validation_path: str) -> str:
+def generate_report(
+    metrics_path: str,
+    validation_path: str,
+    feedback: str | None = None,
+) -> str:
     """
     Generate output/report.md using GPT-4o.
+
+    Parameters
+    ----------
+    feedback : str | None
+        If provided (on a retry), the reviewer's critique to address in this version.
 
     Returns
     -------
@@ -39,7 +48,7 @@ def generate_report(metrics_path: str, validation_path: str) -> str:
         validation = json.load(fh)
 
     validation_lines = (
-        f"All checks passed: {validation['all_passed']} "
+        f"All hard checks passed: {validation['all_hard_passed']} "
         f"({validation['passed_checks']}/{validation['total_checks']})\n"
     )
     for chk in validation["checks"]:
@@ -100,6 +109,12 @@ Give exactly 3 specific, actionable recommendations backed by numbers from this 
 Avoid generic advice — tie each recommendation to a specific metric or month.
 
 Use actual numbers throughout. Format with markdown headers, bullet points, and **bold** for key figures."""
+
+    if feedback:
+        prompt += (
+            f"\n\n## IMPORTANT: Feedback from previous review\n{feedback}\n"
+            "Address ALL of the above issues in this version."
+        )
 
     response = client.chat.completions.create(
         model="gpt-4o",

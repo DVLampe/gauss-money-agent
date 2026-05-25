@@ -58,6 +58,7 @@ if st.button("▶ Запустить агента", disabled=run_disabled, type=
     from tools.metrics_calculator import calculate_metrics
     from tools.data_validator import validate_data
     from tools.report_generator import generate_report
+    from tools.report_reviewer import review_report
 
     data_path = metrics_path = validation_path = report_path = None
     metrics_data = None
@@ -83,13 +84,13 @@ if st.button("▶ Запустить агента", disabled=run_disabled, type=
     st.info("Данные готовы. Передаём агенту путь к CSV → агент запускает аналитику.", icon="🤖")
 
     # ── Шаг 1 (агент): расчёт метрик ─────────────────────────────────────────
-    with st.status("**Шаг 1 / 3** — Расчёт KPI...", expanded=True) as step1:
+    with st.status("**Шаг 1 / 4** — Расчёт KPI...", expanded=True) as step1:
         try:
             r1 = json.loads(calculate_metrics(data_path))
             metrics_path = r1["metrics_path"]
             metrics_data = r1["metrics"]
             step1.update(
-                label=f"✅ Шаг 1 / 3 — KPI рассчитаны → {metrics_path}",
+                label=f"✅ Шаг 1 / 4 — KPI рассчитаны → {metrics_path}",
                 state="complete",
             )
         except Exception as e:
@@ -97,7 +98,7 @@ if st.button("▶ Запустить агента", disabled=run_disabled, type=
             st.stop()
 
     # ── Шаг 2 (агент): валидация ──────────────────────────────────────────────
-    with st.status("**Шаг 2 / 3** — Проверка качества данных...", expanded=True) as step2:
+    with st.status("**Шаг 2 / 4** — Проверка качества данных...", expanded=True) as step2:
         try:
             r2 = json.loads(validate_data(data_path, metrics_path))
             validation_path = r2["validation_path"]
@@ -108,13 +109,13 @@ if st.button("▶ Запустить агента", disabled=run_disabled, type=
             total     = summary["total_checks"]
 
             if hard_fail == 0:
-                label = f"✅ Шаг 2 / 3 — {passed}/{total} проверок пройдено"
+                label = f"✅ Шаг 2 / 4 — {passed}/{total} проверок пройдено"
                 if soft_warn:
                     label += f" ({soft_warn} предупреждения)"
                 step2.update(label=label, state="complete")
             else:
                 step2.update(
-                    label=f"❌ Шаг 2 / 3 — {hard_fail} критических ошибок, {soft_warn} предупреждений",
+                    label=f"❌ Шаг 2 / 4 — {hard_fail} критических ошибок, {soft_warn} предупреждений",
                     state="error",
                 )
         except Exception as e:
@@ -143,18 +144,69 @@ if st.button("▶ Запустить агента", disabled=run_disabled, type=
         st.error("🚫 Критические ошибки в данных. Генерация отчёта остановлена.")
         st.stop()
 
-    # ── Шаг 3 (агент): генерация отчёта ──────────────────────────────────────
-    with st.status("**Шаг 3 / 3** — Генерация отчёта (GPT-4o)...", expanded=True) as step3:
-        try:
-            r3 = json.loads(generate_report(metrics_path, validation_path))
-            report_path = r3["report_path"]
-            step3.update(
-                label=f"✅ Шаг 3 / 3 — Отчёт сформирован → {report_path}",
-                state="complete",
-            )
-        except Exception as e:
-            step3.update(label=f"❌ Ошибка генерации отчёта: {e}", state="error")
-            st.stop()
+    # ── Шаги 3+4: generate_report → review_report (цикл, макс. 3 попытки) ─────
+    MAX_ATTEMPTS = 3
+    feedback = None
+    approved = False
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        label_a = f"{attempt}/{MAX_ATTEMPTS}"
+
+        with st.status(
+            f"Попытка {label_a}: **Шаг 3 / 4** — Генерация отчёта (GPT-4o)...",
+            expanded=True,
+        ) as step3:
+            try:
+                r3 = json.loads(
+                    generate_report(
+                        metrics_path=metrics_path,
+                        validation_path=validation_path,
+                        feedback=feedback,
+                    )
+                )
+                report_path = r3["report_path"]
+                step3.update(
+                    label=f"✅ Попытка {label_a}: Шаг 3 / 4 — Отчёт сформирован → {report_path}",
+                    state="complete",
+                )
+            except Exception as e:
+                step3.update(label=f"❌ Ошибка генерации отчёта: {e}", state="error")
+                st.stop()
+
+        with st.status(
+            f"Попытка {label_a}: **Шаг 4 / 4** — Ревью отчёта (GPT-4o)...",
+            expanded=True,
+        ) as step4:
+            try:
+                review_data = json.loads(
+                    review_report(report_path=report_path, metrics_path=metrics_path)
+                )
+                approved = review_data["approved"]
+                issues   = review_data.get("issues", [])
+
+                if approved:
+                    step4.update(
+                        label=f"✅ Попытка {label_a}: Шаг 4 / 4 — Отчёт одобрен ревьюером",
+                        state="complete",
+                    )
+                else:
+                    feedback = review_data["feedback"]
+                    step4.update(
+                        label=f"⚠️ Попытка {label_a}: Шаг 4 / 4 — Найдено {len(issues)} замечаний, перегенерация...",
+                        state="complete",
+                    )
+                    with st.expander(f"Замечания ревьюера (попытка {label_a})", expanded=True):
+                        for issue in issues:
+                            st.warning(f"• {issue}")
+            except Exception as e:
+                step4.update(label=f"❌ Ошибка ревью: {e}", state="error")
+                st.stop()
+
+        if approved:
+            break
+
+    if not approved:
+        st.warning(f"⚠️ Достигнут лимит попыток ({MAX_ATTEMPTS}). Используется последняя версия отчёта.")
 
     st.success("🎉 Готово! Агент завершил работу.", icon="✅")
     st.divider()

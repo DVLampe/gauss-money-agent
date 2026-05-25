@@ -1,30 +1,33 @@
-"""
+﻿"""
 agent.py — Gauss Money Churn & Revenue AI Agent
 ================================================
-Архитектура разделена на два слоя:
+рхитектура разделена на два слоя:
 
   [Слой данных]  generate_data() запускается ДО агента как отдельный шаг
                  подготовки. В продакшне здесь был бы реальный CSV от системы.
                  Результат — data/users.csv — передаётся агенту как входной файл.
 
-  [Агент]        Получает путь к CSV и оркестрирует три аналитических инструмента:
-                 calculate_metrics → validate_data → generate_report.
+  [Агент]        Оркестрирует четыре аналитических шага:
+                 calculate_metrics → validate_data →
+                 generate_report ↔ review_report (цикл до 3 попыток)
 
-Agentic loop
-------------
-1. LLM receives system prompt + data_path in user message.
-2. LLM emits tool_call(s).
-3. We execute the tool, append the result as a "tool" message.
-4. Repeat until LLM returns a plain text response (no tool_calls).
-
-The LLM decides argument values and call order; it is also the guardrail —
-the system prompt instructs it NOT to call generate_report if validation fails.
+Pipeline
+--------
+  Pre-step     generate_data()   — синтетические данные (вне агента)
+  Step 1 / 4   calculate_metrics — вычисляет KPI по CSV
+  Step 2 / 4   validate_data     — 8 проверок качества данных
+  Step 3 / 4   generate_report   — GPT-4o пишет Markdown-отчёт
+  Step 4 / 4   review_report     — GPT-4o проверяет отчёт:
+                                    ясность → точность данных → рекомендации
+                                    если проблемы → возврат на Step 3 (макс. 3 попытки)
+  Final        Агент пишет итоговое резюме
 """
 
 import json
 import os
 import sys
 
+import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -32,100 +35,12 @@ from tools.data_generator import generate_data
 from tools.metrics_calculator import calculate_metrics
 from tools.data_validator import validate_data
 from tools.report_generator import generate_report
+from tools.report_reviewer import review_report
 
 load_dotenv()
 
-# ──────────────────────────── Tool schemas (3 аналитических инструмента) ───────
-# generate_data — НЕ инструмент агента. Это шаг подготовки данных,
-# который выполняется до старта агента (см. run_agent → pre-step).
+MAX_REVIEW_ATTEMPTS = 3
 
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate_metrics",
-            "description": (
-                "Compute monthly KPIs (active_users, paid_users, churned_users, "
-                "monthly_revenue, churn_rate, arpu) from the subscription CSV."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "data_path": {
-                        "type": "string",
-                        "description": "Path to the subscription CSV file",
-                    },
-                },
-                "required": ["data_path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "validate_data",
-            "description": (
-                "Run 8 deterministic data-quality checks on the raw data and metrics. "
-                "Call after calculate_metrics. "
-                "If any check fails, report the issues instead of generating the report."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "data_path":    {"type": "string", "description": "Path to users CSV"},
-                    "metrics_path": {"type": "string", "description": "Path to metrics CSV returned by calculate_metrics"},
-                },
-                "required": ["data_path", "metrics_path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_report",
-            "description": (
-                "Use GPT-4o to generate a Markdown business report with trends and "
-                "recommendations. Call ONLY after validate_data confirms all checks passed."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "metrics_path":    {"type": "string", "description": "Path to metrics CSV"},
-                    "validation_path": {"type": "string", "description": "Path to validation JSON returned by validate_data"},
-                },
-                "required": ["metrics_path", "validation_path"],
-            },
-        },
-    },
-]
-
-TOOL_MAP = {
-    "calculate_metrics": calculate_metrics,
-    "validate_data":     validate_data,
-    "generate_report":   generate_report,
-}
-
-SYSTEM_PROMPT = """\
-You are a senior fintech data analyst AI agent for a consumer subscription company.
-You are given a ready subscription CSV file. Your goal: produce a complete churn & revenue report.
-
-Execute the tools in this exact order:
-1. calculate_metrics  — compute monthly KPIs; use the data_path provided in the user message
-2. validate_data      — run quality checks; pass data_path and metrics_path from step 1
-3. generate_report    — check the validation summary:
-     • if "hard_failures" > 0 → STOP, report the hard failures, do NOT call generate_report
-     • if "soft_warnings" > 0 → call generate_report anyway, mention the warnings in your summary
-     • if all clear           → call generate_report normally
-
-After all steps complete, write a 2–3 sentence summary:
-  • total 12-month revenue
-  • final retention rate (month-12 active users / 1 000)
-  • any soft warnings found
-  • location of the saved report
-"""
-
-
-# ──────────────────────────── Agent loop ───────────────────────────────────────
 
 def run_agent(data_path: str | None = None) -> None:
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -142,7 +57,6 @@ def run_agent(data_path: str | None = None) -> None:
 
     # ── Pre-step: подготовка данных (вне агента) ───────────────────────────────
     # В продакшне здесь был бы путь к реальному CSV от бизнес-системы.
-    # Поскольку реальных данных нет, генерируем синтетические.
     if data_path is None:
         print("\n[Pre-step] Генерация синтетических данных...")
         r0 = json.loads(generate_data())
@@ -155,58 +69,97 @@ def run_agent(data_path: str | None = None) -> None:
     else:
         print(f"\n[Pre-step] Используется готовый файл данных: {data_path}")
 
-    # ── Запуск агента ──────────────────────────────────────────────────────────
+    # ── Step 1/4: Расчёт метрик ────────────────────────────────────────────────
+    print("\n[Step 1/4] ▶ calculate_metrics")
+    metrics = json.loads(calculate_metrics(data_path=data_path))
+    metrics_path = metrics["metrics_path"]
+    print(f"           → {metrics_path}")
+
+    # ── Step 2/4: Валидация данных ─────────────────────────────────────────────
+    print("\n[Step 2/4] ▶ validate_data")
+    validation = json.loads(validate_data(data_path=data_path, metrics_path=metrics_path))
+    validation_path = validation["validation_path"]
+    val_summary = validation["summary"]
+
+    if val_summary["hard_failures"] > 0:
+        print(f"\n[STOP] {val_summary['hard_failures']} critical failure(s). Report not generated.")
+        for chk in val_summary["checks"]:
+            if chk["severity"] == "hard" and not chk["passed"]:
+                print(f"  ✗ {chk['name']}: {chk['message']}")
+        return
+
+    if val_summary["soft_warnings"] > 0:
+        print(f"[WARN] {val_summary['soft_warnings']} soft warning(s) — proceeding with report.")
+
+    # ── Steps 3/4 + 4/4: Генерация → ревью (цикл, макс. MAX_REVIEW_ATTEMPTS) ──
     client = OpenAI(api_key=api_key)
+    feedback = None
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": f"Subscription data is at '{data_path}'. Calculate metrics, validate, and generate the churn & revenue report."},
-    ]
+    for attempt in range(1, MAX_REVIEW_ATTEMPTS + 1):
+        label = f"{attempt}/{MAX_REVIEW_ATTEMPTS}"
 
-    step = 0
-
-    while True:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
+        # Step 3/4: generate_report
+        print(f"\n[Step 3/4] ▶ generate_report (attempt {label})")
+        if feedback:
+            print(f"           feedback: {feedback[:120]}...")
+        report = json.loads(
+            generate_report(
+                metrics_path=metrics_path,
+                validation_path=validation_path,
+                feedback=feedback,
+            )
         )
+        report_path = report["report_path"]
 
-        msg = response.choices[0].message
-        # Append as dict so the list stays JSON-serialisable for further calls
-        messages.append(msg)
+        # Step 4/4: review_report
+        print(f"\n[Step 4/4] ▶ review_report (attempt {label})")
+        review = json.loads(review_report(report_path=report_path, metrics_path=metrics_path))
 
-        # ── No tool calls → agent is done ─────────────────────────────────────
-        if not msg.tool_calls:
-            print("\n" + "=" * 62)
-            print("  AGENT SUMMARY")
-            print("=" * 62)
-            print(msg.content)
+        if review["approved"]:
+            print("           ✓ Report approved")
             break
 
-        # ── Execute each requested tool ────────────────────────────────────────
-        for tc in msg.tool_calls:
-            step += 1
-            name = tc.function.name
-            args = json.loads(tc.function.arguments)
+        feedback = review["feedback"]
+        issues = review.get("issues", [])
+        print(f"           Issues found ({len(issues)}):")
+        for issue in issues:
+            print(f"             • {issue}")
+    else:
+        print(f"\n[WARN] Max review attempts ({MAX_REVIEW_ATTEMPTS}) reached. Using last version.")
 
-            print(f"\n[Step {step}] ▶ {name}")
-            if args:
-                print(f"           args: {args}")
+    # ── Final: итоговое резюме (LLM) ──────────────────────────────────────────
+    print("\n[Final] ▶ agent summary")
+    m_df = pd.read_csv(metrics_path)
+    total_revenue = round(float(m_df["monthly_revenue"].sum()), 2)
+    final_active = int(m_df["active_users"].iloc[-1])
+    retention_pct = round(final_active / 1000 * 100, 1)
 
-            try:
-                result = TOOL_MAP[name](**args)
-            except Exception as exc:
-                result = json.dumps({"error": str(exc)})
-                print(f"[ERROR] {name} raised: {exc}")
+    summary_resp = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a senior fintech data analyst. Write concise executive summaries.",
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Write a 2–3 sentence executive summary:\n"
+                    f"- Total 12-month revenue: ${total_revenue:,.2f}\n"
+                    f"- Final retention (month 12): {retention_pct}% ({final_active}/1000 users)\n"
+                    f"- Soft warnings: {val_summary['soft_warnings']}\n"
+                    f"- Full report saved at: {report_path}"
+                ),
+            },
+        ],
+        temperature=0.2,
+        max_tokens=200,
+    )
 
-            messages.append({
-                "role":         "tool",
-                "tool_call_id": tc.id,
-                "content":      result,
-            })
-
+    print("\n" + "=" * 62)
+    print("  AGENT SUMMARY")
+    print("=" * 62)
+    print(summary_resp.choices[0].message.content)
     print("\nDone.  Full report → output/report.md")
 
 
