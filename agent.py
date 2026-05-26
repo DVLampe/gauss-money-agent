@@ -139,16 +139,16 @@ def run_agent(data_path: str | None = None) -> None:
         messages=[
             {
                 "role": "system",
-                "content": "You are a senior fintech data analyst. Write concise executive summaries.",
+                "content": "Ты старший финтех-аналитик. Пиши лаконичные итоговые резюме на русском языке.",
             },
             {
                 "role": "user",
                 "content": (
-                    "Write a 2–3 sentence executive summary:\n"
-                    f"- Total 12-month revenue: ${total_revenue:,.2f}\n"
-                    f"- Final retention (month 12): {retention_pct}% ({final_active}/1000 users)\n"
-                    f"- Soft warnings: {val_summary['soft_warnings']}\n"
-                    f"- Full report saved at: {report_path}"
+                    "Напиши итоговое резюме в 2–3 предложениях:\n"
+                    f"- Суммарная выручка за 12 месяцев: ${total_revenue:,.2f}\n"
+                    f"- Retention (месяц 12): {retention_pct}% ({final_active}/1000 пользователей)\n"
+                    f"- Мягких предупреждений: {val_summary['soft_warnings']}\n"
+                    f"- Полный отчёт сохранён: {report_path}"
                 ),
             },
         ],
@@ -157,10 +157,10 @@ def run_agent(data_path: str | None = None) -> None:
     )
 
     print("\n" + "=" * 62)
-    print("  AGENT SUMMARY")
+    print("  ИТОГ АГЕНТА")
     print("=" * 62)
     print(summary_resp.choices[0].message.content)
-    print("\nDone.  Full report → output/report.md")
+    print("\nГотово. Полный отчёт → output/report.md")
 
 
 if __name__ == "__main__":

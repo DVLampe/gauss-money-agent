@@ -63,57 +63,58 @@ def generate_report(
     peak_churn_row  = metrics_df.loc[metrics_df["churn_rate"].idxmax()]
     min_churn_row   = metrics_df.loc[metrics_df[metrics_df["month"] > 1]["churn_rate"].idxmin()]
 
-    prompt = f"""You are a senior fintech analyst at a consumer subscription company.
-Analyze the following 12-month KPI data for a cohort of 1,000 initial users and write a professional business report.
+    prompt = f"""\
+Ты — старший финтех-аналитик в потребительской подписочной компании.
+Проанализируй данные KPI за 12 месяцев для когорты из 1 000 пользователей
+и напиши профессиональный бизнес-отчёт.
 
-## Monthly KPI Table
+ВАЖНО: Отчёт должен быть написан ПОЛНОСТЬЮ на РУССКОМ языке.
+Используй ТОЧНО эти предрассчитанные числа — не пересчитывай самостоятельно:
+- Суммарная выручка за 12 месяцев: ${total_revenue:,.2f}
+- Активных пользователей на конец (месяц 12): {final_active}
+- Retention rate (месяц 12): {retention_pct}%
+- Средний churn rate (месяцы 2–12): {avg_churn_pct}%
+- Пиковый churn: месяц {int(peak_churn_row['month'])} ({peak_churn_row['churn_rate']*100:.1f}%)
+- Минимальный churn (после месяца 1): месяц {int(min_churn_row['month'])} ({min_churn_row['churn_rate']*100:.1f}%)
+
+## Таблица KPI по месяцам
 
 {metrics_table}
 
-## Data Quality Checks
+## Результаты проверок качества данных
 
 {validation_lines}
-## High-level Stats
 
-- Total 12-month revenue: ${total_revenue:,.2f}
-- Starting users (Month 1): 1,000
-- Active users at end (Month 12): {final_active}
-- 12-month retention rate: {retention_pct}%
-- Average monthly churn rate (months 2–12): {avg_churn_pct}%
-- Peak churn: month {int(peak_churn_row['month'])} ({peak_churn_row['churn_rate']*100:.1f}%)
-- Lowest churn (after month 1): month {int(min_churn_row['month'])} ({min_churn_row['churn_rate']*100:.1f}%)
+## Инструкции
 
-## Instructions
+Напиши лаконичный, но насыщенный данными Markdown-отчёт со следующими разделами:
 
-Write a concise but data-driven Markdown report with these exact sections:
+### 1. Резюме
+2–3 предложения: суммарная выручка, retention за 12 месяцев, главный тренд.
 
-### 1. Executive Summary
-2–3 sentences covering total revenue, 12-month retention, and the dominant trend.
+### 2. Динамика выручки
+Опиши изменение выручки по месяцам. Укажи наибольший месячный спад. Назови суммарную выручку.
 
-### 2. Monthly Revenue Trend
-Describe how revenue evolved month-over-month. Identify the largest single-month drop.
-State total cumulative revenue.
+### 3. Динамика оттока (Churn)
+Какие месяцы показали максимальный и минимальный churn. Объясни типичный SaaS-паттерн оттока.
+Сколько пользователей потеряно и когда.
 
-### 3. Churn Trend
-Identify which months had highest/lowest churn. Explain the typical SaaS churn pattern visible in the data.
-Quantify how many users were lost and when.
+### 4. Динамика ARPU
+Опиши изменение ARPU. Объясни, что влияет на ARPU при смешанных тарифах basic/premium.
 
-### 4. ARPU Trend
-Describe how ARPU changed. Explain what drives ARPU movement in a mixed basic/premium plan model.
+### 5. Качество данных
+Кратко: какие проверки проведены, можно ли доверять данным.
 
-### 5. Data Quality Checks
-Summarise which checks were run and whether data can be trusted.
+### 6. Бизнес-рекомендации
+Ровно 3 конкретные, измеримые рекомендации, основанные на числах из данных.
+Избегай общих фраз — каждая рекомендация должна ссылаться на конкретную метрику или месяц.
 
-### 6. Business Interpretation
-Give exactly 3 specific, actionable recommendations backed by numbers from this dataset.
-Avoid generic advice — tie each recommendation to a specific metric or month.
-
-Use actual numbers throughout. Format with markdown headers, bullet points, and **bold** for key figures."""
+Используй реальные числа везде. Форматирование: markdown-заголовки, маркированные списки, **жирный** для ключевых цифр."""
 
     if feedback:
         prompt += (
-            f"\n\n## IMPORTANT: Feedback from previous review\n{feedback}\n"
-            "Address ALL of the above issues in this version."
+            f"\n\n## ВАЖНО: Замечания ревьюера по предыдущей версии\n{feedback}\n"
+            "Исправь ВСЕ указанные замечания в этой версии."
         )
 
     response = client.chat.completions.create(
@@ -122,8 +123,8 @@ Use actual numbers throughout. Format with markdown headers, bullet points, and 
             {
                 "role": "system",
                 "content": (
-                    "You are a senior fintech analyst writing an internal business report. "
-                    "Be precise, reference actual numbers, and give actionable recommendations."
+                    "Ты старший финтех-аналитик, пишущий внутренний бизнес-отчёт на русском языке. "
+                    "Используй точные числа из предоставленных данных, давай конкретные рекомендации."
                 ),
             },
             {"role": "user", "content": prompt},
@@ -137,11 +138,11 @@ Use actual numbers throughout. Format with markdown headers, bullet points, and 
     # ── Write report.md ───────────────────────────────────────────────────────
     report_path = os.path.join("output", "report.md")
     with open(report_path, "w", encoding="utf-8") as fh:
-        fh.write("# Churn & Revenue Report\n\n")
-        fh.write(f"*Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}*\n\n")
+        fh.write("# Отчёт по оттоку и выручке (Churn & Revenue)\n\n")
+        fh.write(f"*Сформирован: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}*\n\n")
         fh.write("---\n\n")
         fh.write(report_content)
-        fh.write("\n\n---\n\n## Appendix: Full Monthly KPI Table\n\n")
+        fh.write("\n\n---\n\n## Приложение: Полная таблица KPI по месяцам\n\n")
         try:
             fh.write(metrics_df.to_markdown(index=False))
         except ImportError:

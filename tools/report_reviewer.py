@@ -37,31 +37,33 @@ def review_report(report_path: str, metrics_path: str) -> str:
     except ImportError:
         metrics_table = metrics_df.to_string(index=False)
 
-    prompt = f"""You are a strict senior editor reviewing a business report on subscription churn and revenue.
+    prompt = f"""Ты — строгий старший редактор, проверяющий бизнес-отчёт по оттоку и выручке подписочного сервиса.
 
-Evaluate the report across three dimensions:
-1. **Clarity** — Is the language clear and accessible for a non-technical business executive? No jargon without explanation.
-2. **Data accuracy** — Do all numbers, percentages, and trends in the report match the source metrics table exactly?
-3. **Recommendations** — Are the 3 recommendations specific, quantified, and tied to actual figures from the data?
+Оцени отчёт по трём критериям:
+1. **Ясность** — понятен ли язык нетехническому бизнес-руководителю? Нет ли необъяснённого жаргона?
+2. **Точность данных** — совпадают ли числа и тренды в отчёте с исходной таблицей метрик?
+   ДОПУСК: разница до ±2% и ±$50 для производных показателей (суммарная выручка, retention) является приемлемым округлением. Отклоняй только существенные расхождения (>2% или >$50).
+3. **Рекомендации** — все ли 3 рекомендации конкретны, измеримы и привязаны к реальным цифрам?
 
-SOURCE METRICS (ground truth):
+ИСХОДНЫЕ МЕТРИКИ (источник истины):
 {metrics_table}
 
-REPORT TO REVIEW:
+ОТЧЁТ ДЛЯ ПРОВЕРКИ:
 {report_text}
 
-Respond ONLY with a JSON object (no markdown fences):
+Отвечай ТОЛЬКО JSON-объектом (без markdown-оформления):
 {{
-  "approved": true or false,
-  "issues": ["short description of issue 1", "..."],
-  "feedback": "Concise actionable instructions for the report author addressing each issue. Empty string if approved."
+  "approved": true или false,
+  "issues": ["краткое описание проблемы 1", "..."],
+  "feedback": "Конкретные инструкции для автора отчёта по устранению каждой проблемы. Пустая строка если approved=true."
 }}
 
-Rules:
-- Set approved=true only if all three dimensions are satisfactory.
-- List each distinct problem separately in "issues" (empty list if approved).
-- "feedback" must give specific fix instructions, referencing exact numbers when relevant.
-- Do NOT reject for minor stylistic preferences — only genuine clarity, accuracy, or specificity problems."""
+Правила:
+- approved=true только если все три критерия удовлетворены.
+- Перечисляй каждую отдельную проблему в "issues" (пустой список если approved=true).
+- "feedback" должен давать конкретные инструкции по исправлению с указанием точных цифр при необходимости.
+- НЕ отклоняй за незначительные стилистические предпочтения — только реальные проблемы ясности, точности или конкретности.
+- Все поля "issues" и "feedback" пиши на РУССКОМ языке."""
 
     response = client.chat.completions.create(
         model="gpt-4o",
