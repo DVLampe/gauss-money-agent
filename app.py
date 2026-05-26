@@ -254,7 +254,7 @@ if st.button("▶ Запустить агента", disabled=run_disabled, type=
         st.stop()
 
     # ── Шаги 3/4 + 4/4: Генерация → ревью (цикл, макс. 5 попыток) ────────────
-    MAX_ATTEMPTS = 5
+    MAX_ATTEMPTS = 3
     feedback = None
     approved = False
 
